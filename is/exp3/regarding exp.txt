@@ -1,0 +1,4 @@
+implement plaintext to ciphertext using ceaser cyph and then use crpythanaysis to decrypt using dict
+
+used scowl english abbreviation 35
+enlgish words 10 20 35
