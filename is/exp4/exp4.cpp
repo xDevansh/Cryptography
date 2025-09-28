@@ -1,188 +1,211 @@
 #include <iostream>
 #include <string>
 #include <vector>
-#include <algorithm> // For std::remove, std::unique
+#include <map>
+#include <set>
+#include <algorithm>
+#include <cctype>
 
-// A structure to hold the coordinates (row, col) of a character in the key table.
-struct Point {
-    int row;
-    int col;
-};
+// --- Forward Declarations ---
+void print_map(const std::map<char, char>& m);
+std::pair<std::map<char, char>, std::map<char, char>> generate_substitution_key(std::string keyword);
+std::pair<std::string, std::string> sanitize_text_keep_original(const std::string& plaintext);
+std::string substitution_encrypt(const std::string& text, const std::map<char, char>& key_map);
+std::string substitution_decrypt(const std::string& text, const std::map<char, char>& rev_map);
+std::string transpose_encrypt(std::string text, const std::vector<int>& key);
+std::string transpose_decrypt(const std::string& text, const std::vector<int>& key);
+std::string reinsert_spacing(const std::string& original_text, const std::string& continuous_text);
 
-// Function to generate the 5x5 key table from a keyword.
-void generateKeyTable(const std::string& key, char keyTable[5][5]) {
-    // A boolean array to keep track of letters already added to the table.
-    // 'a' corresponds to index 0, 'b' to 1, and so on.
-    bool used[26] = {false};
-    used['j' - 'a'] = true; // We treat 'j' as 'i'.
-
-    int i = 0, j = 0; // Current position (row, col) in the keyTable.
-
-    // 1. Fill the table with the unique characters of the key.
-    for (char c : key) {
-        if (c == 'j') c = 'i'; // Treat 'j' as 'i'.
-
-        if (!used[c - 'a']) {
-            keyTable[i][j] = c;
-            used[c - 'a'] = true;
-            j++;
-            if (j == 5) {
-                i++;
-                j = 0;
-            }
-        }
-    }
-
-    // 2. Fill the remaining cells with the rest of the alphabet.
-    for (char c = 'a'; c <= 'z'; ++c) {
-        if (!used[c - 'a']) {
-            keyTable[i][j] = c;
-            j++;
-            if (j == 5) {
-                i++;
-                j = 0;
-            }
-        }
-    }
-}
-
-// Function to find the position of a character in the key table.
-Point findPosition(char c, const char keyTable[5][5]) {
-    if (c == 'j') c = 'i'; // Treat 'j' as 'i'.
-
-    for (int i = 0; i < 5; ++i) {
-        for (int j = 0; j < 5; ++j) {
-            if (keyTable[i][j] == c) {
-                return {i, j}; // Return the Point struct {row, col}.
-            }
-        }
-    }
-    return {-1, -1}; // Should not happen with valid input.
-}
-
-
-// Function to encrypt the plaintext.
-std::string encrypt(const std::string& plaintext, const char keyTable[5][5]) {
-    std::string ciphertext = "";
-    for (size_t i = 0; i < plaintext.length(); i += 2) {
-        char a = plaintext[i];
-        char b = plaintext[i + 1];
-
-        Point pos_a = findPosition(a, keyTable);
-        Point pos_b = findPosition(b, keyTable);
-
-        // Case 1: Same row
-        if (pos_a.row == pos_b.row) {
-            ciphertext += keyTable[pos_a.row][(pos_a.col + 1) % 5];
-            ciphertext += keyTable[pos_b.row][(pos_b.col + 1) % 5];
-        }
-        // Case 2: Same column
-        else if (pos_a.col == pos_b.col) {
-            ciphertext += keyTable[(pos_a.row + 1) % 5][pos_a.col];
-            ciphertext += keyTable[(pos_b.row + 1) % 5][pos_b.col];
-        }
-        // Case 3: Rectangle
-        else {
-            ciphertext += keyTable[pos_a.row][pos_b.col];
-            ciphertext += keyTable[pos_b.row][pos_a.col];
-        }
-    }
-    return ciphertext;
-}
-
-// Function to decrypt the ciphertext (reverse of encryption).
-std::string decrypt(const std::string& ciphertext, const char keyTable[5][5]) {
-    std::string plaintext = "";
-    for (size_t i = 0; i < ciphertext.length(); i += 2) {
-        char a = ciphertext[i];
-        char b = ciphertext[i + 1];
-
-        Point pos_a = findPosition(a, keyTable);
-        Point pos_b = findPosition(b, keyTable);
-
-        // Case 1: Same row (move left)
-        if (pos_a.row == pos_b.row) {
-            plaintext += keyTable[pos_a.row][(pos_a.col - 1 + 5) % 5];
-            plaintext += keyTable[pos_b.row][(pos_b.col - 1 + 5) % 5];
-        }
-        // Case 2: Same column (move up)
-        else if (pos_a.col == pos_b.col) {
-            plaintext += keyTable[(pos_a.row - 1 + 5) % 5][pos_a.col];
-            plaintext += keyTable[(pos_b.row - 1 + 5) % 5][pos_b.col];
-        }
-        // Case 3: Rectangle (same as encryption)
-        else {
-            plaintext += keyTable[pos_a.row][pos_b.col];
-            plaintext += keyTable[pos_b.row][pos_a.col];
-        }
-    }
-    return plaintext;
-}
-
-
-// A helper function to prepare the text for encryption.
-std::string prepareText(std::string text) {
-    // 1. Remove non-alphabetic characters and convert to lowercase.
-    text.erase(std::remove_if(text.begin(), text.end(), [](char c) { return !isalpha(c); }), text.end());
-    std::transform(text.begin(), text.end(), text.begin(), ::tolower);
-    
-    // 2. Replace 'j' with 'i'.
-    std::replace(text.begin(), text.end(), 'j', 'i');
-
-    // 3. Insert 'x' between identical characters in a digraph.
-    for (size_t i = 0; i < text.length(); i += 2) {
-        if (i + 1 < text.length() && text[i] == text[i+1]) {
-            text.insert(i + 1, "x");
-        }
-    }
-
-    // 4. If the length is odd, append 'x'.
-    if (text.length() % 2 != 0) {
-        text += 'x';
-    }
-    
-    return text;
-}
-
-
+// --- Main Program ---
 int main() {
-    std::string key, text;
-    char keyTable[5][5];
+    // Hardcoded transposition key (same as Python example)
+    std::vector<int> transposition_key = {3, 1, 4, 2};
+    std::string keyword;
+    std::string plaintext_input;
 
-    std::cout << "Enter the keyword: ";
-    std::getline(std::cin, key);
+    std::cout << "Enter a keyword for substitution key: ";
+    std::getline(std::cin, keyword);
 
-    std::cout << "Enter the text to encrypt: ";
-    std::getline(std::cin, text);
+    std::cout << "Enter plaintext: ";
+    std::getline(std::cin, plaintext_input);
 
-    // Prepare the key (lowercase, no spaces/duplicates).
-    key.erase(std::remove(key.begin(), key.end(), ' '), key.end());
-    std::transform(key.begin(), key.end(), key.begin(), ::tolower);
+    // 1. Prepare keys and text
+    auto [sub_key, rev_sub_key] = generate_substitution_key(keyword);
+    auto [original_plain, cleaned_plain] = sanitize_text_keep_original(plaintext_input);
 
-    // Generate the key table.
-    generateKeyTable(key, keyTable);
+    // 2. Encryption (on cleaned text)
+    std::string substituted = substitution_encrypt(cleaned_plain, sub_key);
+    std::string ciphertext_continuous = transpose_encrypt(substituted, transposition_key);
+    std::string ciphertext_spaced = reinsert_spacing(original_plain, ciphertext_continuous);
 
-    // Prepare the plaintext.
-    std::string preparedText = prepareText(text);
+    // 3. Decryption (on continuous ciphertext)
+    std::string rev_transposed = transpose_decrypt(ciphertext_continuous, transposition_key);
+    std::string decrypted = substitution_decrypt(rev_transposed, rev_sub_key);
+    
+    // 4. Trim decrypted text to original length to remove padding
+    std::string decrypted_trimmed = decrypted.substr(0, cleaned_plain.length());
+    std::string decrypted_with_spacing = reinsert_spacing(original_plain, decrypted_trimmed);
 
-    // Encrypt the text.
-    std::string ciphertext = encrypt(preparedText, keyTable);
-
-    // Decrypt the text.
-    std::string decryptedText = decrypt(ciphertext, keyTable);
-
-    std::cout << "\nResults:" << std::endl;
-    std::cout << "Key Table:" << std::endl;
-    for (int i = 0; i < 5; ++i) {
-        for (int j = 0; j < 5; ++j) {
-            std::cout << keyTable[i][j] << " ";
-        }
-        std::cout << std::endl;
-    }
-    std::cout << "\nOriginal Text:    " << text << std::endl;
-    std::cout << "Prepared Text:    " << preparedText << std::endl;
-    std::cout << "Encrypted Cipher: " << ciphertext << std::endl;
-    std::cout << "Decrypted Text:   " << decryptedText << std::endl;
+    // --- Show results ---
+    std::cout << "\n--- Results ---\n";
+    std::cout << "Generated Substitution Key: ";
+    print_map(sub_key);
+    std::cout << "Original Plaintext (as entered):  " << original_plain << std::endl;
+    std::cout << "Plaintext used for encryption   :  " << cleaned_plain << std::endl;
+    std::cout << "After Substitution (clean)      :  " << substituted << std::endl;
+    std::cout << "Ciphertext (continuous)         :  " << ciphertext_continuous << std::endl;
+    std::cout << "Ciphertext (with original spacing):  " << ciphertext_spaced << std::endl;
+    std::cout << "Decrypted (cleaned, padded)     :  " << decrypted << std::endl;
+    std::cout << "Decrypted (trimmed to original) :  " << decrypted_trimmed << std::endl;
+    std::cout << "Decrypted (with original spacing):  " << decrypted_with_spacing << std::endl;
 
     return 0;
+}
+
+// --- Function Implementations ---
+
+/**
+ * @brief Generates substitution and reverse-substitution maps from a keyword.
+ */
+std::pair<std::map<char, char>, std::map<char, char>> generate_substitution_key(std::string keyword) {
+    std::string cipher_alphabet = "";
+    std::set<char> seen;
+
+    std::transform(keyword.begin(), keyword.end(), keyword.begin(), ::toupper);
+    for (char ch : keyword) {
+        if (std::isalpha(ch) && seen.find(ch) == seen.end()) {
+            cipher_alphabet += ch;
+            seen.insert(ch);
+        }
+    }
+
+    for (char ch = 'A'; ch <= 'Z'; ++ch) {
+        if (seen.find(ch) == seen.end()) {
+            cipher_alphabet += ch;
+        }
+    }
+
+    std::map<char, char> sub_key;
+    std::map<char, char> rev_sub_key;
+    char plain_char = 'A';
+    for (char cipher_char : cipher_alphabet) {
+        sub_key[plain_char] = cipher_char;
+        rev_sub_key[cipher_char] = plain_char;
+        plain_char++;
+    }
+
+    return {sub_key, rev_sub_key};
+}
+
+/**
+ * @brief Cleans plaintext to keep only uppercase letters, but also returns the original.
+ */
+std::pair<std::string, std::string> sanitize_text_keep_original(const std::string& plaintext) {
+    std::string cleaned = "";
+    for (char ch : plaintext) {
+        if (std::isalpha(ch)) {
+            cleaned += std::toupper(ch);
+        }
+    }
+    return {plaintext, cleaned};
+}
+
+/**
+ * @brief Encrypts/decrypts text using a given substitution map.
+ */
+std::string substitution_encrypt(const std::string& text, const std::map<char, char>& key_map) {
+    std::string result = "";
+    for (char ch : text) {
+        // .count checks if the key exists in the map
+        if (key_map.count(ch)) {
+            result += key_map.at(ch);
+        } else {
+            result += ch; // Append character as-is if not in map (e.g., padding)
+        }
+    }
+    return result;
+}
+
+std::string substitution_decrypt(const std::string& text, const std::map<char, char>& rev_map) {
+    return substitution_encrypt(text, rev_map); // The logic is identical, just uses a different map
+}
+
+/**
+ * @brief Encrypts text using a columnar transposition cipher.
+ */
+std::string transpose_encrypt(std::string text, const std::vector<int>& key) {
+    int block_size = key.size();
+    if (block_size == 0) return text;
+    
+    int padding = (block_size - (text.length() % block_size)) % block_size;
+    text.append(padding, 'X');
+
+    std::string result = "";
+    for (size_t i = 0; i < text.length(); i += block_size) {
+        std::string block = text.substr(i, block_size);
+        for (int j = 0; j < block_size; ++j) {
+            // Key is 1-based, so subtract 1 for 0-based C++ indexing
+            result += block[key[j] - 1];
+        }
+    }
+    return result;
+}
+
+/**
+ * @brief Decrypts text from a columnar transposition cipher.
+ */
+std::string transpose_decrypt(const std::string& text, const std::vector<int>& key) {
+    int block_size = key.size();
+    if (block_size == 0) return text;
+
+    std::string result = "";
+    for (size_t i = 0; i < text.length(); i += block_size) {
+        std::string block = text.substr(i, block_size);
+        std::string temp(block_size, ' ');
+        for (int j = 0; j < block_size; ++j) {
+            // Key is 1-based, so subtract 1
+            temp[key[j] - 1] = block[j];
+        }
+        result += temp;
+    }
+    return result;
+}
+
+/**
+ * @brief Reinserts spaces and punctuation from an original text into a continuous text.
+ */
+std::string reinsert_spacing(const std::string& original_text, const std::string& continuous_text) {
+    std::string result = "";
+    auto continuous_iter = continuous_text.begin();
+    
+    for (char original_char : original_text) {
+        if (std::isalpha(original_char)) {
+            if (continuous_iter != continuous_text.end()) {
+                result += *continuous_iter;
+                ++continuous_iter;
+            } else {
+                result += 'X'; // Fallback if continuous text is shorter
+            }
+        } else {
+            result += original_char; // Preserve space/punctuation
+        }
+    }
+    // Append any leftover characters from continuous text (i.e., padding)
+    result.append(continuous_iter, continuous_text.end());
+    return result;
+}
+
+/**
+ * @brief Helper function to print a map for verification.
+ */
+void print_map(const std::map<char, char>& m) {
+    std::cout << "{";
+    auto it = m.begin();
+    while (it != m.end()) {
+        std::cout << "'" << it->first << "': '" << it->second << "'";
+        if (++it != m.end()) {
+            std::cout << ", ";
+        }
+    }
+    std::cout << "}\n";
 }
